@@ -28,6 +28,7 @@ type exportCmd struct {
 	cacheDir              string
 	cacheImageTag         string
 	groupPath             string
+	stackGroupPath        string
 	deprecatedRunImageRef string
 	exportArgs
 
@@ -72,6 +73,7 @@ func (e *exportCmd) Init() {
 	cmd.FlagStackPath(&e.stackPath)
 	cmd.FlagUID(&e.uid)
 	cmd.FlagUseDaemon(&e.useDaemon)
+	cmd.FlagStackGroupPath(&e.stackGroupPath)
 
 	cmd.DeprecatedFlagRunImage(&e.deprecatedRunImageRef)
 }
@@ -124,11 +126,11 @@ func (e *exportCmd) Privileges() error {
 }
 
 func (e *exportCmd) Exec() error {
-	group, err := lifecycle.ReadGroup(e.groupPath)
+	group, stackGroup, err := lifecycle.ReadGroups(e.groupPath, e.stackGroupPath)
 	if err != nil {
 		return cmd.FailErr(err, "read buildpack group")
 	}
-	if err := verifyBuildpackApis(group); err != nil {
+	if err := verifyBuildpackApis(group, stackGroup); err != nil {
 		return err
 	}
 
@@ -142,10 +144,10 @@ func (e *exportCmd) Exec() error {
 		cmd.DefaultLogger.Infof("no stack metadata found at path '%s', stack metadata will not be exported\n", e.stackPath)
 	}
 
-	return e.export(group, cacheStore, analyzedMD)
+	return e.export(stackGroup, group, cacheStore, analyzedMD)
 }
 
-func (ea exportArgs) export(group lifecycle.BuildpackGroup, cacheStore lifecycle.Cache, analyzedMD lifecycle.AnalyzedMetadata) error {
+func (ea exportArgs) export(stackGroup, group lifecycle.BuildpackGroup, cacheStore lifecycle.Cache, analyzedMD lifecycle.AnalyzedMetadata) error {
 	ref, err := name.ParseReference(ea.imageNames[0], name.WeakValidation)
 	if err != nil {
 		return cmd.FailErr(err, "failed to parse registry")
@@ -173,7 +175,7 @@ func (ea exportArgs) export(group lifecycle.BuildpackGroup, cacheStore lifecycle
 	}
 
 	exporter := &lifecycle.Exporter{
-		Buildpacks: group.Group,
+		Buildpacks: append(stackGroup.Group, group.Group...),
 		LayerFactory: &layers.Factory{
 			ArtifactsDir: artifactsDir,
 			UID:          ea.uid,

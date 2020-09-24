@@ -24,6 +24,8 @@ var (
 	DefaultProcessType         = "web"
 	DefaultProjectMetadataPath = filepath.Join(".", "project-metadata.toml")
 	DefaultReportPath          = filepath.Join(".", "report.toml")
+	DefaultStackBuildpacksDir  = filepath.Join(rootDir, "cnb", "stack", "buildpacks")
+	DefaultStackGroupPath      = filepath.Join(".", "stack-group.toml")
 	DefaultStackPath           = filepath.Join(rootDir, "cnb", "stack.toml")
 )
 
@@ -52,9 +54,13 @@ const (
 	EnvRunImage            = "CNB_RUN_IMAGE"
 	EnvSkipLayers          = "CNB_ANALYZE_SKIP_LAYERS" // defaults to false
 	EnvSkipRestore         = "CNB_SKIP_RESTORE"        // defaults to false
+	EnvStackBuildpacksDir  = "CNB_STACK_BUILDPACKS_DIR"
 	EnvStackPath           = "CNB_STACK_PATH"
+	EnvStackGroupPath      = "CNB_STACK_GROUP_PATH"
 	EnvUID                 = "CNB_USER_ID"
 	EnvUseDaemon           = "CNB_USE_DAEMON" // defaults to false
+
+	FlagNameStackGroupPath = "stack-group"
 )
 
 var flagSet = flag.NewFlagSet("lifecycle", flag.ExitOnError)
@@ -135,8 +141,16 @@ func FlagSkipRestore(skip *bool) {
 	flagSet.BoolVar(skip, "skip-restore", BoolEnv(EnvSkipRestore), "do not restore layers or layer metadata")
 }
 
+func FlagStackBuildpacksDir(dir *string) {
+	flagSet.StringVar(dir, "stack-buildpacks", EnvOrDefault(EnvStackBuildpacksDir, DefaultStackBuildpacksDir), "path to stack buildpacks directory")
+}
+
 func FlagStackPath(path *string) {
 	flagSet.StringVar(path, "stack", EnvOrDefault(EnvStackPath, DefaultStackPath), "path to stack.toml")
+}
+
+func FlagStackGroupPath(path *string) {
+	flagSet.StringVar(path, FlagNameStackGroupPath, EnvOrDefault(EnvStackGroupPath, DefaultStackGroupPath), "path to stack-group.toml")
 }
 
 func FlagTags(tags *StringSlice) {

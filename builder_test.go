@@ -30,12 +30,14 @@ func TestBuilder(t *testing.T) {
 }
 
 //go:generate mockgen -package testmock -destination testmock/env.go github.com/buildpacks/lifecycle BuildEnv
+//go:generate mockgen -package testmock -destination testmock/snapshotter.go github.com/buildpacks/lifecycle LayerSnapshotter
 
 func testBuilder(t *testing.T, when spec.G, it spec.S) {
 	var (
 		builder        *lifecycle.Builder
 		mockCtrl       *gomock.Controller
 		env            *testmock.MockBuildEnv
+		snapshotter    *testmock.MockLayerSnapshotter
 		stdout, stderr *bytes.Buffer
 		tmpDir         string
 		platformDir    string
@@ -46,6 +48,7 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 	it.Before(func() {
 		mockCtrl = gomock.NewController(t)
 		env = testmock.NewMockBuildEnv(mockCtrl)
+		snapshotter = testmock.NewMockLayerSnapshotter(mockCtrl)
 
 		var err error
 		tmpDir, err = ioutil.TempDir("", "lifecycle")
@@ -60,14 +63,11 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 
 		outLog := log.New(io.MultiWriter(stdout, it.Out()), "", 0)
 		errLog := log.New(io.MultiWriter(stderr, it.Out()), "", 0)
-
-		buildpacksDir := filepath.Join("testdata", "by-id")
-
 		builder = &lifecycle.Builder{
 			AppDir:        appDir,
 			LayersDir:     layersDir,
 			PlatformDir:   platformDir,
-			BuildpacksDir: buildpacksDir,
+			BuildpacksDir: filepath.Join("testdata", "by-id"),
 			PlatformAPI:   api.MustParse("0.3"),
 			Env:           env,
 			Group: lifecycle.BuildpackGroup{
@@ -444,6 +444,68 @@ func testBuilder(t *testing.T, when spec.G, it spec.S) {
 					t.Fatalf("Unexpected error:\n%s\n", err)
 				}
 				h.AssertEq(t, bpPlanContents.Entries[0].Version, "v4")
+			})
+
+			when("there is a snapshotter", func() {
+				it.Before(func() {
+					snapshotter.EXPECT().Init()
+					builder.Snapshotter = snapshotter
+				})
+
+				it("should take a snapshot for each buildpack", func() {
+					snapshotter.EXPECT().TakeSnapshot(filepath.Join(layersDir, "A", "snapshot", "snapshot.tgz"))
+					snapshotter.EXPECT().TakeSnapshot(filepath.Join(layersDir, "B", "snapshot", "snapshot.tgz"))
+
+					metadata, err := builder.Build()
+					h.AssertNil(t, err)
+
+					if err != nil {
+						t.Fatalf("Error: %s\n", err)
+					}
+					if s := cmp.Diff(metadata, &lifecycle.BuildMetadata{
+						Processes: []launch.Process{},
+						Buildpacks: []lifecycle.Buildpack{
+							{ID: "A", Version: "v1", API: "0.3"},
+							{ID: "B", Version: "v2", API: "0.2"},
+						},
+					}); s != "" {
+						t.Fatalf("Unexpected metadata:\n%s\n", s)
+					}
+				})
+
+				when("there are existing snapshots", func() {
+					it.Before(func() {
+						layersDir = filepath.Join("testdata", "existing-snapshots")
+						builder.LayersDir = layersDir
+						env.EXPECT().AddRootDir(gomock.Any()).AnyTimes()
+						env.EXPECT().AddEnvDir(gomock.Any()).AnyTimes()
+					})
+
+					it("should apply a snapshot for each buildpack before taking a new one", func() {
+						gomock.InOrder(
+							snapshotter.EXPECT().ApplySnapshot(filepath.Join(layersDir, "A", "snapshot", "snapshot.tgz")),
+							snapshotter.EXPECT().TakeSnapshot(filepath.Join(layersDir, "A", "snapshot", "snapshot.tgz")),
+							snapshotter.EXPECT().ApplySnapshot(filepath.Join(layersDir, "B", "snapshot", "snapshot.tgz")),
+							snapshotter.EXPECT().TakeSnapshot(filepath.Join(layersDir, "B", "snapshot", "snapshot.tgz")),
+						)
+
+						metadata, err := builder.Build()
+						h.AssertNil(t, err)
+
+						if err != nil {
+							t.Fatalf("Error: %s\n", err)
+						}
+						if s := cmp.Diff(metadata, &lifecycle.BuildMetadata{
+							Processes: []launch.Process{},
+							Buildpacks: []lifecycle.Buildpack{
+								{ID: "A", Version: "v1", API: "0.3"},
+								{ID: "B", Version: "v2", API: "0.2"},
+							},
+						}); s != "" {
+							t.Fatalf("Unexpected metadata:\n%s\n", s)
+						}
+					})
+				})
 			})
 		})
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/docker/docker/client"
 
@@ -14,6 +15,7 @@ type createCmd struct {
 	//flags: inputs
 	appDir              string
 	buildpacksDir       string
+	stackBuildpacksDir  string
 	cacheDir            string
 	cacheImageTag       string
 	imageName           string
@@ -35,7 +37,8 @@ type createCmd struct {
 	useDaemon           bool
 
 	//set if necessary before dropping privileges
-	docker client.CommonAPIClient
+	ouid, ogid int
+	docker     client.CommonAPIClient
 }
 
 func (c *createCmd) Init() {
@@ -53,6 +56,7 @@ func (c *createCmd) Init() {
 	cmd.FlagReportPath(&c.reportPath)
 	cmd.FlagRunImage(&c.runImageRef)
 	cmd.FlagSkipRestore(&c.skipRestore)
+	cmd.FlagStackBuildpacksDir(&c.stackBuildpacksDir)
 	cmd.FlagStackPath(&c.stackPath)
 	cmd.FlagUID(&c.uid)
 	cmd.FlagUseDaemon(&c.useDaemon)
@@ -88,6 +92,7 @@ func (c *createCmd) Args(nargs int, args []string) error {
 }
 
 func (c *createCmd) Privileges() error {
+	c.ogid, c.ouid = os.Getgid(), os.Getuid()
 	if c.useDaemon {
 		var err error
 		c.docker, err = priv.DockerClient()
@@ -98,7 +103,8 @@ func (c *createCmd) Privileges() error {
 	if err := priv.EnsureOwner(c.uid, c.gid, c.cacheDir, c.launchCacheDir, c.layersDir); err != nil {
 		return cmd.FailErr(err, "chown volumes")
 	}
-	if err := priv.RunAs(c.uid, c.gid); err != nil {
+
+	if err := priv.RunAsEffective(c.uid, c.gid); err != nil {
 		cmd.FailErr(err, fmt.Sprintf("exec as user %d:%d", c.uid, c.gid))
 	}
 	if err := priv.SetEnvironmentForUser(c.uid); err != nil {
@@ -114,11 +120,12 @@ func (c *createCmd) Exec() error {
 	}
 
 	cmd.DefaultLogger.Phase("DETECTING")
-	group, plan, err := detectArgs{
-		buildpacksDir: c.buildpacksDir,
-		appDir:        c.appDir,
-		platformDir:   c.platformDir,
-		orderPath:     c.orderPath,
+	dr, err := detectArgs{
+		buildpacksDir:      c.buildpacksDir,
+		stackBuildpacksDir: c.stackBuildpacksDir,
+		appDir:             c.appDir,
+		platformDir:        c.platformDir,
+		orderPath:          c.orderPath,
 	}.detect()
 	if err != nil {
 		return err
@@ -131,26 +138,27 @@ func (c *createCmd) Exec() error {
 		skipLayers: c.skipRestore,
 		useDaemon:  c.useDaemon,
 		docker:     c.docker,
-	}.analyze(group, cacheStore)
+	}.analyze(dr.BuildGroup, dr.BuildPrivilegedGroup, cacheStore)
 	if err != nil {
 		return err
 	}
 
 	if !c.skipRestore {
 		cmd.DefaultLogger.Phase("RESTORING")
-		if err := restore(c.layersDir, group, cacheStore); err != nil {
+		if err := restore(c.layersDir, dr.BuildGroup, dr.BuildPrivilegedGroup, cacheStore); err != nil {
 			return err
 		}
 	}
 
 	cmd.DefaultLogger.Phase("BUILDING")
 	err = buildArgs{
-		buildpacksDir: c.buildpacksDir,
-		layersDir:     c.layersDir,
-		appDir:        c.appDir,
-		platformAPI:   c.platformAPI,
-		platformDir:   c.platformDir,
-	}.build(group, plan)
+		buildpacksDir:      c.buildpacksDir,
+		layersDir:          c.layersDir,
+		appDir:             c.appDir,
+		platformAPI:        c.platformAPI,
+		platformDir:        c.platformDir,
+		stackBuildpacksDir: c.stackBuildpacksDir,
+	}.buildAll(dr.BuildGroup, dr.BuildPrivilegedGroup, dr.BuildPlan, c.ouid, c.ogid, c.uid, c.gid)
 	if err != nil {
 		return err
 	}
@@ -172,5 +180,5 @@ func (c *createCmd) Exec() error {
 		stackPath:           c.stackPath,
 		uid:                 c.uid,
 		useDaemon:           c.useDaemon,
-	}.export(group, cacheStore, analyzedMD)
+	}.export(dr.BuildPrivilegedGroup, dr.BuildGroup, cacheStore, analyzedMD)
 }

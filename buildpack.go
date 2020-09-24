@@ -9,10 +9,11 @@ import (
 )
 
 type Buildpack struct {
-	ID       string `toml:"id" json:"id"`
-	Version  string `toml:"version" json:"version"`
-	Optional bool   `toml:"optional,omitempty" json:"optional,omitempty"`
-	API      string `toml:"api,omitempty" json:"-"`
+	ID         string `toml:"id" json:"id"`
+	Version    string `toml:"version" json:"version"`
+	Optional   bool   `toml:"optional,omitempty" json:"optional,omitempty"`
+	Privileged bool   `toml:"privileged,omitempty" json:"privileged,omitempty"`
+	API        string `toml:"api,omitempty" json:"-"`
 }
 
 func (bp Buildpack) String() string {
@@ -51,10 +52,11 @@ type BuildpackTOML struct {
 }
 
 type BuildpackInfo struct {
-	ID       string `toml:"id"`
-	Version  string `toml:"version"`
-	Name     string `toml:"name"`
-	ClearEnv bool   `toml:"clear-env,omitempty"`
+	ID         string `toml:"id"`
+	Version    string `toml:"version"`
+	Name       string `toml:"name"`
+	ClearEnv   bool   `toml:"clear-env,omitempty"`
+	Privileged bool   `toml:"privileged,omitempty"`
 }
 
 func (bp BuildpackTOML) String() string {

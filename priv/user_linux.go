@@ -115,6 +115,22 @@ func RunAs(uid, gid int) error {
 	return nil
 }
 
+// RunAsEffective sets the user ID and group ID of the calling process, while retaining the ability to regain privileges of the original caller.
+func RunAsEffective(uid, gid int) error {
+	if uid == os.Getuid() && gid == os.Getgid() {
+		return nil
+	}
+
+	if err := setresgid(gid, gid, -1); err != nil {
+		return err
+	}
+	if err := setresuid(gid, uid, -1); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func setresgid(rgid, egid, sgid int) error {
 	eno := C.csetresgid(C.gid_t(rgid), C.gid_t(egid), C.gid_t(sgid))
 	if eno != 0 {

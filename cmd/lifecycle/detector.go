@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	"github.com/buildpacks/lifecycle"
 	"github.com/buildpacks/lifecycle/cmd"
@@ -16,24 +18,28 @@ type detectCmd struct {
 	detectArgs
 
 	// flags: paths to write outputs
-	groupPath string
-	planPath  string
+	groupPath      string
+	stackGroupPath string
+	planPath       string
 }
 
 type detectArgs struct {
 	// inputs needed when run by creator
-	buildpacksDir string
-	appDir        string
-	platformDir   string
-	orderPath     string
+	buildpacksDir      string
+	appDir             string
+	platformDir        string
+	orderPath          string
+	stackBuildpacksDir string
 }
 
 func (d *detectCmd) Init() {
 	cmd.FlagBuildpacksDir(&d.buildpacksDir)
 	cmd.FlagAppDir(&d.appDir)
 	cmd.FlagPlatformDir(&d.platformDir)
+	cmd.FlagStackBuildpacksDir(&d.stackBuildpacksDir)
 	cmd.FlagOrderPath(&d.orderPath)
 	cmd.FlagGroupPath(&d.groupPath)
+	cmd.FlagStackGroupPath(&d.stackGroupPath)
 	cmd.FlagPlanPath(&d.planPath)
 }
 
@@ -53,34 +59,90 @@ func (d *detectCmd) Privileges() error {
 }
 
 func (d *detectCmd) Exec() error {
-	group, plan, err := d.detect()
+	dr, err := d.detect()
 	if err != nil {
 		return err
 	}
-	return d.writeData(group, plan)
+	return d.writeData(dr)
 }
 
-func (da detectArgs) detect() (lifecycle.BuildpackGroup, lifecycle.BuildPlan, error) {
+func (da detectArgs) mergeOrderWithStackBuildpacks(order lifecycle.BuildpackOrder) (lifecycle.BuildpackOrder, error) {
+	if _, err := os.Stat(da.stackBuildpacksDir); err != nil {
+		if os.IsNotExist(err) {
+			return order, nil
+		}
+	}
+
+	buildpackDirs, err := ioutil.ReadDir(da.stackBuildpacksDir)
+	if err != nil {
+		return nil, err
+	}
+
+	stackBuildpacks := []lifecycle.Buildpack{}
+
+	for _, buildpackDir := range buildpackDirs {
+		if buildpackDir.IsDir() {
+			// TODO get the latest version dir, or maybe error if there is more than one
+			path := filepath.Join(da.stackBuildpacksDir, buildpackDir.Name())
+			buildpackVersionDirs, err := ioutil.ReadDir(path)
+			if err != nil {
+				return nil, err
+			}
+
+			buildpackID := filepath.Base(buildpackDir.Name())
+			if len(buildpackVersionDirs) > 0 && buildpackVersionDirs[0].IsDir() {
+				buildpackVersion := filepath.Base(buildpackVersionDirs[0].Name())
+				bp := lifecycle.Buildpack{
+					ID:         buildpackID,
+					Version:    buildpackVersion,
+					Privileged: true,
+					Optional:   true,
+				}
+				stackBuildpacks = append(stackBuildpacks, bp)
+			}
+		}
+	}
+
+	if len(stackBuildpacks) == 0 {
+		return order, nil
+	}
+
+	fo := lifecycle.BuildpackOrder{}
+	for _, grp := range order {
+		fo = append(fo, lifecycle.BuildpackGroup{Group: append(stackBuildpacks, grp.Group...)})
+	}
+
+	return fo, nil
+}
+
+func (da detectArgs) detect() (lifecycle.DetectResult, error) {
 	order, err := lifecycle.ReadOrder(da.orderPath)
 	if err != nil {
-		return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, cmd.FailErr(err, "read buildpack order file")
+		return lifecycle.DetectResult{}, cmd.FailErr(err, "read buildpack order file")
 	}
+
+	order, err = da.mergeOrderWithStackBuildpacks(order)
+	if err != nil {
+		return lifecycle.DetectResult{}, cmd.FailErr(err, "merge stack buildpacks into order")
+	}
+
 	if err := da.verifyBuildpackApis(order); err != nil {
-		return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, err
+		return lifecycle.DetectResult{}, err
 	}
 
 	envv := env.NewBuildEnv(os.Environ())
 	fullEnv, err := envv.WithPlatform(da.platformDir)
 	if err != nil {
-		return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, cmd.FailErr(err, "read full env")
+		return lifecycle.DetectResult{}, cmd.FailErr(err, "read full env")
 	}
-	group, plan, err := order.Detect(&lifecycle.DetectConfig{
-		FullEnv:       fullEnv,
-		ClearEnv:      envv.List(),
-		AppDir:        da.appDir,
-		PlatformDir:   da.platformDir,
-		BuildpacksDir: da.buildpacksDir,
-		Logger:        cmd.DefaultLogger,
+	dr, err := order.Detect(&lifecycle.DetectConfig{
+		FullEnv:            fullEnv,
+		ClearEnv:           envv.List(),
+		AppDir:             da.appDir,
+		PlatformDir:        da.platformDir,
+		BuildpacksDir:      da.buildpacksDir,
+		Logger:             cmd.DefaultLogger,
+		StackBuildpacksDir: da.stackBuildpacksDir,
 	})
 	if err != nil {
 		switch err := err.(type) {
@@ -89,25 +151,29 @@ func (da detectArgs) detect() (lifecycle.BuildpackGroup, lifecycle.BuildPlan, er
 			case lifecycle.ErrTypeFailedDetection:
 				cmd.DefaultLogger.Error("No buildpack groups passed detection.")
 				cmd.DefaultLogger.Error("Please check that you are running against the correct path.")
-				return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, cmd.FailErrCode(err, cmd.CodeFailedDetect, "detect")
+				return lifecycle.DetectResult{}, cmd.FailErrCode(err, cmd.CodeFailedDetect, "detect")
 			case lifecycle.ErrTypeBuildpack:
 				cmd.DefaultLogger.Error("No buildpack groups passed detection.")
-				return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, cmd.FailErrCode(err, cmd.CodeFailedDetectWithErrors, "detect")
+				return lifecycle.DetectResult{}, cmd.FailErrCode(err, cmd.CodeFailedDetectWithErrors, "detect")
 			default:
-				return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, cmd.FailErrCode(err, cmd.CodeDetectError, "detect")
+				return lifecycle.DetectResult{}, cmd.FailErrCode(err, cmd.CodeDetectError, "detect")
 			}
 		default:
-			return lifecycle.BuildpackGroup{}, lifecycle.BuildPlan{}, cmd.FailErrCode(err, cmd.CodeDetectError, "detect")
+			return lifecycle.DetectResult{}, cmd.FailErrCode(err, cmd.CodeDetectError, "detect")
 		}
 	}
 
-	return group, plan, nil
+	return *dr, nil
 }
 
 func (da detectArgs) verifyBuildpackApis(order lifecycle.BuildpackOrder) error {
 	for _, group := range order {
 		for _, bp := range group.Group {
-			bpTOML, err := bp.Lookup(da.buildpacksDir)
+			bpDir := da.buildpacksDir
+			if bp.Privileged {
+				bpDir = da.stackBuildpacksDir
+			}
+			bpTOML, err := bp.Lookup(bpDir)
 			if err != nil {
 				return cmd.FailErr(err, fmt.Sprintf("lookup buildpack.toml for buildpack '%s'", bp.String()))
 			}
@@ -119,12 +185,18 @@ func (da detectArgs) verifyBuildpackApis(order lifecycle.BuildpackOrder) error {
 	return nil
 }
 
-func (d *detectCmd) writeData(group lifecycle.BuildpackGroup, plan lifecycle.BuildPlan) error {
-	if err := lifecycle.WriteTOML(d.groupPath, group); err != nil {
+func (d *detectCmd) writeData(dr lifecycle.DetectResult) error {
+	if err := lifecycle.WriteTOML(d.groupPath, dr.BuildGroup); err != nil {
 		return cmd.FailErr(err, "write buildpack group")
 	}
 
-	if err := lifecycle.WriteTOML(d.planPath, plan); err != nil {
+	if len(dr.BuildPrivilegedGroup.Group) > 0 {
+		if err := lifecycle.WriteTOML(d.stackGroupPath, dr.BuildPrivilegedGroup); err != nil {
+			return cmd.FailErr(err, "write stack buildpack group")
+		}
+	}
+
+	if err := lifecycle.WriteTOML(d.planPath, dr.BuildPlan); err != nil {
 		return cmd.FailErr(err, "write detect plan")
 	}
 	return nil
