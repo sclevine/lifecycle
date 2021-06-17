@@ -6,6 +6,7 @@ type Descriptor struct {
 	API       string `toml:"api"`
 	Buildpack Info   `toml:"buildpack"`
 	Order     Order  `toml:"order"`
+	Stacks    []Stack
 	Dir       string `toml:"-"`
 }
 
@@ -27,6 +28,11 @@ type Info struct {
 	ID       string `toml:"id"`
 	Name     string `toml:"name"`
 	Version  string `toml:"version"`
+}
+
+type Stack struct {
+	ID     string   `toml:"id"`
+	Mixins []string `toml:"mixins"`
 }
 
 type Order []Group

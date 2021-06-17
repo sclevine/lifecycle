@@ -1,6 +1,8 @@
 package pre06
 
-import "github.com/buildpacks/lifecycle/api"
+import (
+	"github.com/buildpacks/lifecycle/api"
+)
 
 type Platform struct {
 	api *api.Version
@@ -15,5 +17,9 @@ func (p *Platform) API() string {
 }
 
 func (p *Platform) SupportsAssetPackages() bool {
+	return false
+}
+
+func (p *Platform) SupportsMixinValidation() bool {
 	return false
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/buildpacks/lifecycle/platform"
 )
 
+// TODO: move into stack.go
 func ValidateStack(stackMD platform.StackMetadata, runImage imgutil.Image) error {
 	buildStackID, err := getBuildStack(stackMD)
 	if err != nil {

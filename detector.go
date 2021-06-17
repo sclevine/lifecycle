@@ -20,18 +20,26 @@ var (
 	ErrBuildpack       = errors.New("buildpack(s) failed with err")
 )
 
+type MixinValidator interface {
+	ValidateMixins(descriptor buildpack.Descriptor, analyzed platform.AnalyzedMetadata) error
+}
+
 type Resolver interface {
 	Resolve(done []buildpack.GroupBuildpack, detectRuns *sync.Map) ([]buildpack.GroupBuildpack, []platform.BuildPlanEntry, error)
 }
 
 type Detector struct {
 	buildpack.DetectConfig
-	Resolver Resolver
-	Runs     *sync.Map
-	Store    BuildpackStore
+	MixinValidator MixinValidator
+	Resolver       Resolver
+	Runs           *sync.Map
+	Store          BuildpackStore
+	Platform       Platform
+	Analyzed       platform.AnalyzedMetadata // Platform API >= 0.7
 }
 
-func NewDetector(config buildpack.DetectConfig, buildpacksDir string) (*Detector, error) {
+func NewDetector(config buildpack.DetectConfig, buildpacksDir string, platform platform.Platform) (*Detector, error) {
+	mixinValidator := &StackValidator{}
 	resolver := &DefaultResolver{
 		Logger: config.Logger,
 	}
@@ -40,10 +48,12 @@ func NewDetector(config buildpack.DetectConfig, buildpacksDir string) (*Detector
 		return nil, err
 	}
 	return &Detector{
-		DetectConfig: config,
-		Resolver:     resolver,
-		Runs:         &sync.Map{},
-		Store:        store,
+		DetectConfig:   config,
+		MixinValidator: mixinValidator,
+		Resolver:       resolver,
+		Runs:           &sync.Map{},
+		Store:          store,
+		Platform:       platform,
 	}, nil
 }
 
@@ -112,6 +122,13 @@ func (d *Detector) detectGroup(group buildpack.Group, done []buildpack.GroupBuil
 			// FIXME: cyclical references lead to infinite recursion
 			return d.detectOrder(bpDesc.Order, done, group.Group[i+1:], groupBp.Optional, wg)
 		}
+
+		if d.Platform.SupportsMixinValidation() {
+			if err := d.MixinValidator.ValidateMixins(*bpDesc, d.Analyzed); err != nil {
+				return nil, nil, err
+			}
+		}
+
 		done = append(done, groupBp)
 		wg.Add(1)
 		go func(key string, bp Buildpack) {

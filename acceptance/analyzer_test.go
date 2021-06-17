@@ -14,7 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/BurntSushi/toml"
+	"github.com/buildpacks/lifecycle/platform/factory"
+
 	ih "github.com/buildpacks/imgutil/testhelpers"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/registry"
@@ -124,11 +125,14 @@ func TestAnalyzer(t *testing.T) {
 func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spec.S) {
 	return func(t *testing.T, when spec.G, it spec.S) {
 		var copyDir, containerName, cacheVolume string
+		var platformInt platform.Platform
 
 		it.Before(func() {
 			containerName = "test-container-" + h.RandString(10)
 			var err error
 			copyDir, err = ioutil.TempDir("", "test-docker-copy-")
+			h.AssertNil(t, err)
+			platformInt, err = factory.NewPlatform(platformAPI)
 			h.AssertNil(t, err)
 		})
 
@@ -291,7 +295,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 					h.WithArgs(execArgs...),
 				)
 
-				assertAnalyzedMetadata(t, filepath.Join(copyDir, "some-analyzed.toml"))
+				assertAnalyzedMetadata(t, filepath.Join(copyDir, "some-analyzed.toml"), platformInt)
 			})
 		})
 
@@ -316,7 +320,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 					h.WithArgs(execArgs...),
 				)
 
-				assertAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"))
+				assertAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"), platformInt)
 			})
 
 			when("app image exists", func() {
@@ -403,7 +407,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 							),
 						)
 
-						assertAnalyzedMetadata(t, filepath.Join(copyDir, "layers", "analyzed.toml"))
+						assertAnalyzedMetadata(t, filepath.Join(copyDir, "layers", "analyzed.toml"), platformInt)
 						assertWritesStoreTomlOnly(t, copyDir, output)
 					})
 				})
@@ -666,7 +670,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 					h.WithArgs(ctrPath(analyzerPath), "some-image"),
 				)
 
-				assertAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"))
+				assertAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"), platformInt)
 			})
 
 			when("app image exists", func() {
@@ -753,7 +757,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 								),
 							)
 
-							assertAnalyzedMetadata(t, filepath.Join(copyDir, "layers", "analyzed.toml"))
+							assertAnalyzedMetadata(t, filepath.Join(copyDir, "layers", "analyzed.toml"), platformInt)
 							assertWritesStoreTomlOnly(t, copyDir, output)
 						})
 					})
@@ -819,7 +823,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 								),
 							)
 
-							assertAnalyzedMetadata(t, filepath.Join(copyDir, "layers", "analyzed.toml"))
+							assertAnalyzedMetadata(t, filepath.Join(copyDir, "layers", "analyzed.toml"), platformInt)
 							assertWritesStoreTomlOnly(t, copyDir, output)
 						})
 					})
@@ -874,8 +878,8 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 								h.WithArgs(execArgs...),
 							)
 
-							md := getAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"))
-							h.AssertStringContains(t, md.Image.Reference, authRegAppImage)
+							md := assertAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"), platformInt)
+							h.AssertStringContains(t, md.PreviousImage().Reference, authRegAppImage)
 						})
 					})
 
@@ -900,8 +904,8 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 								h.WithArgs(execArgs...),
 							)
 
-							md := getAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"))
-							h.AssertStringContains(t, md.Image.Reference, authRegAppImage)
+							md := assertAnalyzedMetadata(t, filepath.Join(copyDir, "analyzed.toml"), platformInt)
+							h.AssertStringContains(t, md.PreviousImage().Reference, authRegAppImage)
 						})
 					})
 				})
@@ -1073,7 +1077,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 				h.AssertPathExists(t, filepath.Join(otherLayersDir, "some-buildpack-id")) // some-buildpack-id is found in the working directory: /layers/group.toml
 
 				h.DockerCopyOut(t, containerName, ctrPath("/layers"), layersDir) // analyzed.toml is written at the working directory: /layers
-				assertAnalyzedMetadata(t, filepath.Join(layersDir, "analyzed.toml"))
+				assertAnalyzedMetadata(t, filepath.Join(layersDir, "analyzed.toml"), platformInt)
 			})
 
 			it("uses the group path at the layers path and writes analyzed.toml at the layers path", func() {
@@ -1099,7 +1103,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 				)
 				h.AssertPathExists(t, filepath.Join(copyDir, "some-other-layers", "another-buildpack-id")) // another-buildpack-id is found in the provided -layers directory: /some-other-layers/group.toml
 
-				assertAnalyzedMetadata(t, filepath.Join(copyDir, "some-other-layers", "analyzed.toml")) // analyzed.toml is written at the provided -layers directory: /some-other-layers
+				assertAnalyzedMetadata(t, filepath.Join(copyDir, "some-other-layers", "analyzed.toml"), platformInt) // analyzed.toml is written at the provided -layers directory: /some-other-layers
 			})
 		})
 
@@ -1292,24 +1296,14 @@ func buildAuthRegistryImage(t *testing.T, repoName, context string, buildArgs ..
 	return regRepoName, authConfig
 }
 
-func assertAnalyzedMetadata(t *testing.T, path string) {
+func assertAnalyzedMetadata(t *testing.T, path string, platform platform.Platform) platform.AnalyzedMetadata {
 	contents, _ := ioutil.ReadFile(path)
 	h.AssertEq(t, len(contents) > 0, true)
 
-	var analyzedMd platform.AnalyzedMetadata
-	_, err := toml.Decode(string(contents), &analyzedMd)
-	h.AssertNil(t, err)
-}
-
-func getAnalyzedMetadata(t *testing.T, path string) *platform.AnalyzedMetadata {
-	contents, _ := ioutil.ReadFile(path)
-	h.AssertEq(t, len(contents) > 0, true)
-
-	var analyzedMd platform.AnalyzedMetadata
-	_, err := toml.Decode(string(contents), &analyzedMd)
+	analyzedMd, err := platform.DecodeAnalyzedMetadataFile(path)
 	h.AssertNil(t, err)
 
-	return &analyzedMd
+	return analyzedMd
 }
 
 func assertLogsAndRestoresAppMetadata(t *testing.T, dir, output string) {

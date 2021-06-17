@@ -134,7 +134,7 @@ func (e *exportCmd) Args(nargs int, args []string) error {
 		return err
 	}
 
-	e.analyzedMD, err = parseOptionalAnalyzedMD(cmd.DefaultLogger, e.analyzedPath)
+	e.analyzedMD, err = e.parseOptionalAnalyzedMD(cmd.DefaultLogger, e.analyzedPath)
 	if err != nil {
 		return cmd.FailErrCode(err, cmd.CodeInvalidArgs, "parse analyzed metadata")
 	}
@@ -190,8 +190,8 @@ func (e *exportCmd) registryImages() []string {
 	if !e.useDaemon {
 		registryImages = append(registryImages, e.imageNames...)
 		registryImages = append(registryImages, e.runImageRef)
-		if e.analyzedMD.Image != nil {
-			registryImages = append(registryImages, e.analyzedMD.Image.Reference)
+		if e.analyzedMD.PreviousImage() != nil {
+			registryImages = append(registryImages, e.analyzedMD.PreviousImage().Reference)
 		}
 	}
 	return registryImages
@@ -242,17 +242,17 @@ func (ea exportArgs) export(group buildpack.Group, cacheStore lifecycle.Cache, a
 		DefaultProcessType: ea.processType,
 		LauncherConfig:     launcherConfig(ea.launcherPath),
 		LayersDir:          ea.layersDir,
-		OrigMetadata:       analyzedMD.Metadata,
+		OrigMetadata:       analyzedMD.PreviousImageMetadata(),
 		Project:            projectMD,
 		RunImageRef:        runImageID,
 		Stack:              ea.stackMD,
 		WorkingImage:       appImage,
 	})
 	if err != nil {
-		return cmd.FailErrCode(err, ea.platform.CodeFor(cmd.ExportError), "export")
+		return cmd.FailErrCode(err, ea.platform.CodeFor(platform.ExportError), "export")
 	}
 	if err := lifecycle.WriteTOML(ea.reportPath, &report); err != nil {
-		return cmd.FailErrCode(err, ea.platform.CodeFor(cmd.ExportError), "write export report")
+		return cmd.FailErrCode(err, ea.platform.CodeFor(platform.ExportError), "write export report")
 	}
 
 	if cacheStore != nil {
@@ -268,9 +268,9 @@ func (ea exportArgs) initDaemonAppImage(analyzedMD platform.AnalyzedMetadata) (i
 		local.FromBaseImage(ea.runImageRef),
 	}
 
-	if analyzedMD.Image != nil {
-		cmd.DefaultLogger.Debugf("Reusing layers from image with id '%s'", analyzedMD.Image.Reference)
-		opts = append(opts, local.WithPreviousImage(analyzedMD.Image.Reference))
+	if analyzedMD.PreviousImage() != nil {
+		cmd.DefaultLogger.Debugf("Reusing layers from image with id '%s'", analyzedMD.PreviousImage().Reference)
+		opts = append(opts, local.WithPreviousImage(analyzedMD.PreviousImage().Reference))
 	}
 
 	var appImage imgutil.Image
@@ -303,9 +303,9 @@ func (ea exportArgs) initRemoteAppImage(analyzedMD platform.AnalyzedMetadata) (i
 		remote.FromBaseImage(ea.runImageRef),
 	}
 
-	if analyzedMD.Image != nil {
-		cmd.DefaultLogger.Infof("Reusing layers from image '%s'", analyzedMD.Image.Reference)
-		ref, err := name.ParseReference(analyzedMD.Image.Reference, name.WeakValidation)
+	if analyzedMD.PreviousImage() != nil {
+		cmd.DefaultLogger.Infof("Reusing layers from image '%s'", analyzedMD.PreviousImage().Reference)
+		ref, err := name.ParseReference(analyzedMD.PreviousImage().Reference, name.WeakValidation)
 		if err != nil {
 			return nil, "", cmd.FailErr(err, "parse analyzed registry")
 		}
@@ -313,7 +313,7 @@ func (ea exportArgs) initRemoteAppImage(analyzedMD platform.AnalyzedMetadata) (i
 		if analyzedRegistry != ea.registry {
 			return nil, "", fmt.Errorf("analyzed image is on a different registry %s from the exported image %s", analyzedRegistry, ea.registry)
 		}
-		opts = append(opts, remote.WithPreviousImage(analyzedMD.Image.Reference))
+		opts = append(opts, remote.WithPreviousImage(analyzedMD.PreviousImage().Reference))
 	}
 
 	appImage, err := remote.NewImage(
@@ -351,17 +351,17 @@ func launcherConfig(launcherPath string) lifecycle.LauncherConfig {
 	}
 }
 
-func parseOptionalAnalyzedMD(logger lifecycle.Logger, path string) (platform.AnalyzedMetadata, error) {
+func (ea *exportArgs) parseOptionalAnalyzedMD(logger lifecycle.Logger, path string) (platform.AnalyzedMetadata, error) {
 	var analyzedMD platform.AnalyzedMetadata
 
-	_, err := toml.DecodeFile(path, &analyzedMD)
+	analyzedMD, err := ea.platform.DecodeAnalyzedMetadataFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			logger.Warnf("Warning: analyzed TOML file not found at '%s'", path)
-			return platform.AnalyzedMetadata{}, nil
+			return nil, nil
 		}
 
-		return platform.AnalyzedMetadata{}, err
+		return nil, err
 	}
 
 	return analyzedMD, nil

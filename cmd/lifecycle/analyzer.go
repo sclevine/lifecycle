@@ -18,6 +18,7 @@ import (
 	"github.com/buildpacks/lifecycle/buildpack"
 	"github.com/buildpacks/lifecycle/cmd"
 	"github.com/buildpacks/lifecycle/platform"
+	"github.com/buildpacks/lifecycle/platform/factory"
 	"github.com/buildpacks/lifecycle/priv"
 )
 
@@ -193,7 +194,7 @@ func (aa analyzeArgs) validateStack() error {
 
 func (aa analyzeArgs) analyze() (platform.AnalyzedMetadata, error) {
 	if err := aa.validateStack(); err != nil {
-		return platform.AnalyzedMetadata{}, cmd.FailErr(err, "validate stack")
+		return nil, cmd.FailErr(err, "validate stack")
 	}
 
 	var (
@@ -214,19 +215,24 @@ func (aa analyzeArgs) analyze() (platform.AnalyzedMetadata, error) {
 		)
 	}
 	if err != nil {
-		return platform.AnalyzedMetadata{}, cmd.FailErr(err, "get previous image")
+		return nil, cmd.FailErr(err, "get previous image")
+	}
+
+	commonPlatform, err := factory.NewPlatform(aa.platform.API())
+	if err != nil {
+		return nil, cmd.FailErr(err, "initialize platform")
 	}
 
 	analyzedMD, err := (&lifecycle.Analyzer{
 		Buildpacks:            aa.platform06.group.Group,
 		Cache:                 aa.platform06.cache,
 		Logger:                cmd.DefaultLogger,
-		Platform:              aa.platform,
+		Platform:              commonPlatform,
 		Image:                 img,
 		LayerMetadataRestorer: lifecycle.NewLayerMetadataRestorer(cmd.DefaultLogger, aa.layersDir, aa.platform06.skipLayers),
 	}).Analyze()
 	if err != nil {
-		return platform.AnalyzedMetadata{}, cmd.FailErrCode(err, aa.platform.CodeFor(cmd.AnalyzeError), "analyzer")
+		return nil, cmd.FailErrCode(err, aa.platform.CodeFor(platform.AnalyzeError), "analyzer")
 	}
 	return analyzedMD, nil
 }

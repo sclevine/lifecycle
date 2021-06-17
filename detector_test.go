@@ -15,13 +15,16 @@ import (
 	"github.com/sclevine/spec/report"
 
 	"github.com/buildpacks/lifecycle"
+	"github.com/buildpacks/lifecycle/api"
 	"github.com/buildpacks/lifecycle/buildpack"
 	"github.com/buildpacks/lifecycle/platform"
+	"github.com/buildpacks/lifecycle/platform/factory"
 	h "github.com/buildpacks/lifecycle/testhelpers"
 	"github.com/buildpacks/lifecycle/testmock"
 )
 
 //go:generate mockgen -package testmock -destination testmock/resolver.go github.com/buildpacks/lifecycle Resolver
+//go:generate mockgen -package testmock -destination testmock/mixin_validator.go github.com/buildpacks/lifecycle MixinValidator
 
 func TestDetector(t *testing.T) {
 	spec.Run(t, "Detector", testDetector, spec.Report(report.Terminal{}))
@@ -32,15 +35,24 @@ func testDetector(t *testing.T, when spec.G, it spec.S) {
 		var (
 			mockCtrl       *gomock.Controller
 			detector       *lifecycle.Detector
+			mixinValidator *testmock.MockMixinValidator
 			resolver       *testmock.MockResolver
 			buildpackStore *testmock.MockBuildpackStore
 		)
 
 		it.Before(func() {
 			mockCtrl = gomock.NewController(t)
+
+			platform, err := factory.NewPlatform(api.Platform.Latest().String())
+			h.AssertNil(t, err)
+
 			detector = &lifecycle.Detector{
-				Runs: &sync.Map{},
+				Platform: platform,
+				Runs:     &sync.Map{},
 			}
+
+			mixinValidator = testmock.NewMockMixinValidator(mockCtrl)
+			detector.MixinValidator = mixinValidator
 
 			resolver = testmock.NewMockResolver(mockCtrl)
 			detector.Resolver = resolver
@@ -56,6 +68,8 @@ func testDetector(t *testing.T, when spec.G, it spec.S) {
 		it("should expand order-containing buildpack IDs", func() {
 			// This test doesn't use gomock.InOrder() because each call to Detect() happens in a go func.
 			// The order that other calls are written in is the order that they happen in.
+
+			mixinValidator.EXPECT().ValidateMixins(gomock.Any(), gomock.Any()).AnyTimes()
 
 			bpE1 := testmock.NewMockBuildpack(mockCtrl)
 			bpA1 := testmock.NewMockBuildpack(mockCtrl)
@@ -236,6 +250,8 @@ func testDetector(t *testing.T, when spec.G, it spec.S) {
 			// This test doesn't use gomock.InOrder() because each call to Detect() happens in a go func.
 			// The order that other calls are written in is the order that they happen in.
 
+			mixinValidator.EXPECT().ValidateMixins(gomock.Any(), gomock.Any()).AnyTimes()
+
 			bpE1 := testmock.NewMockBuildpack(mockCtrl)
 			bpA1 := testmock.NewMockBuildpack(mockCtrl)
 			bpF1 := testmock.NewMockBuildpack(mockCtrl)
@@ -406,6 +422,8 @@ func testDetector(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		it("should convert top level versions to metadata versions", func() {
+			mixinValidator.EXPECT().ValidateMixins(gomock.Any(), gomock.Any()).AnyTimes()
+
 			bpA1 := testmock.NewMockBuildpack(mockCtrl)
 			buildpackStore.EXPECT().Lookup("A", "v1").Return(bpA1, nil)
 			bpA1.EXPECT().ConfigFile().Return(&buildpack.Descriptor{API: "0.3"})
@@ -478,6 +496,8 @@ func testDetector(t *testing.T, when spec.G, it spec.S) {
 		})
 
 		it("should update detect runs for each buildpack", func() {
+			mixinValidator.EXPECT().ValidateMixins(gomock.Any(), gomock.Any()).AnyTimes()
+
 			bpA1 := testmock.NewMockBuildpack(mockCtrl)
 			buildpackStore.EXPECT().Lookup("A", "v1").Return(bpA1, nil)
 			bpA1.EXPECT().ConfigFile().Return(&buildpack.Descriptor{API: "0.3"})
@@ -556,7 +576,33 @@ func testDetector(t *testing.T, when spec.G, it spec.S) {
 			}
 		})
 
+		when("mixin validation", func() { // TODO: add
+			when("supported", func() {
+				when("successful", func() {
+					it("runs detect", func() {
+
+					})
+				})
+
+				when("failed", func() {
+					it("fails fast", func() {
+
+					})
+				})
+			})
+
+			when("not supported", func() {
+				it("runs detect", func() {
+
+				})
+			})
+		})
+
 		when("resolve errors", func() {
+			it.Before(func() {
+				mixinValidator.EXPECT().ValidateMixins(gomock.Any(), gomock.Any()).AnyTimes()
+			})
+
 			when("with buildpack error", func() {
 				it("returns a buildpack error", func() {
 					bpA1 := testmock.NewMockBuildpack(mockCtrl)

@@ -12,6 +12,8 @@ import (
 type Platform interface {
 	API() string
 	SupportsAssetPackages() bool
+	SupportsMixinValidation() bool
+	NewAnalyzedMetadata(config platform.AnalyzedMetadataConfig) platform.AnalyzedMetadata
 }
 
 type Analyzer struct {
@@ -37,7 +39,7 @@ func (a *Analyzer) Analyze() (platform.AnalyzedMetadata, error) {
 	if a.Image != nil { // Image is optional in Platform API >= 0.7
 		imageID, err = a.getImageIdentifier(a.Image)
 		if err != nil {
-			return platform.AnalyzedMetadata{}, errors.Wrap(err, "retrieving image identifier")
+			return nil, errors.Wrap(err, "retrieving image identifier")
 		}
 
 		// continue even if the label cannot be decoded
@@ -51,19 +53,21 @@ func (a *Analyzer) Analyze() (platform.AnalyzedMetadata, error) {
 	if a.restoresLayerMetadata() {
 		cacheMeta, err = retrieveCacheMetadata(a.Cache, a.Logger)
 		if err != nil {
-			return platform.AnalyzedMetadata{}, err
+			return nil, err
 		}
 
 		useShaFiles := true
 		if err := a.LayerMetadataRestorer.Restore(a.Buildpacks, appMeta, cacheMeta, NewLayerSHAStore(useShaFiles)); err != nil {
-			return platform.AnalyzedMetadata{}, err
+			return nil, err
 		}
 	}
 
-	return platform.AnalyzedMetadata{
-		Image:    imageID,
-		Metadata: appMeta,
-	}, nil
+	analyzedMD := a.Platform.NewAnalyzedMetadata(platform.AnalyzedMetadataConfig{
+		PreviousImage:         imageID,
+		PreviousImageMetadata: appMeta,
+	})
+
+	return analyzedMD, nil
 }
 
 func (a *Analyzer) restoresLayerMetadata() bool {

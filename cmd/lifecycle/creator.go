@@ -12,6 +12,7 @@ import (
 	"github.com/buildpacks/lifecycle/cmd"
 	"github.com/buildpacks/lifecycle/image"
 	"github.com/buildpacks/lifecycle/platform"
+	"github.com/buildpacks/lifecycle/platform/factory"
 	"github.com/buildpacks/lifecycle/priv"
 )
 
@@ -151,6 +152,12 @@ func (c *createCmd) Exec() error {
 		group      buildpack.Group
 		plan       platform.BuildPlan
 	)
+
+	commonPlatform, err := factory.NewPlatform(c.platform.API())
+	if err != nil {
+		return err
+	}
+
 	if api.MustParse(c.platform.API()).Compare(api.MustParse("0.7")) >= 0 {
 		cmd.DefaultLogger.Phase("ANALYZING")
 		analyzedMD, err = analyzeArgs{
@@ -173,7 +180,7 @@ func (c *createCmd) Exec() error {
 			buildpacksDir: c.buildpacksDir,
 			appDir:        c.appDir,
 			layersDir:     c.layersDir,
-			platform:      c.platform,
+			platform:      commonPlatform,
 			platformDir:   c.platformDir,
 			orderPath:     c.orderPath,
 		}.detect()
@@ -186,7 +193,7 @@ func (c *createCmd) Exec() error {
 			buildpacksDir: c.buildpacksDir,
 			appDir:        c.appDir,
 			layersDir:     c.layersDir,
-			platform:      c.platform,
+			platform:      commonPlatform,
 			platformDir:   c.platformDir,
 			orderPath:     c.orderPath,
 		}.detect()
@@ -220,7 +227,7 @@ func (c *createCmd) Exec() error {
 			layersDir:  c.layersDir,
 			platform:   c.platform,
 			skipLayers: c.skipRestore,
-		}.restore(analyzedMD.Metadata, group, cacheStore)
+		}.restore(analyzedMD.PreviousImageMetadata(), group, cacheStore)
 		if err != nil {
 			return err
 		}

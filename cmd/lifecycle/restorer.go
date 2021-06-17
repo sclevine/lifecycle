@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/BurntSushi/toml"
 	"github.com/google/go-containerregistry/pkg/authn"
 
 	"github.com/buildpacks/lifecycle"
@@ -13,6 +12,7 @@ import (
 	"github.com/buildpacks/lifecycle/buildpack"
 	"github.com/buildpacks/lifecycle/cmd"
 	"github.com/buildpacks/lifecycle/platform"
+	"github.com/buildpacks/lifecycle/platform/factory"
 	"github.com/buildpacks/lifecycle/priv"
 )
 
@@ -99,9 +99,8 @@ func (r *restoreCmd) Exec() error {
 
 	var appMeta platform.LayersMetadata
 	if r.restoresLayerMetadata() {
-		var analyzedMd platform.AnalyzedMetadata
-		if _, err := toml.DecodeFile(r.analyzedPath, &analyzedMd); err == nil {
-			appMeta = analyzedMd.Metadata
+		if analyzedMd, err := r.platform.DecodeAnalyzedMetadataFile(r.analyzedPath); err == nil {
+			appMeta = analyzedMd.PreviousImageMetadata()
 		}
 	}
 
@@ -116,17 +115,22 @@ func (r *restoreCmd) registryImages() []string {
 }
 
 func (r restoreArgs) restore(layerMetadata platform.LayersMetadata, group buildpack.Group, cacheStore lifecycle.Cache) error {
+	commonPlatform, err := factory.NewPlatform(r.platform.API()) // TODO: fix weirdness
+	if err != nil {
+		return cmd.FailErrCode(err, r.platform.CodeFor(platform.RestoreError), "restore")
+	}
+
 	restorer := &lifecycle.Restorer{
 		LayersDir:             r.layersDir,
 		Buildpacks:            group.Group,
 		Logger:                cmd.DefaultLogger,
-		Platform:              r.platform,
+		Platform:              commonPlatform,
 		LayerMetadataRestorer: lifecycle.NewLayerMetadataRestorer(cmd.DefaultLogger, r.layersDir, r.skipLayers),
 		LayersMetadata:        layerMetadata,
 	}
 
 	if err := restorer.Restore(cacheStore); err != nil {
-		return cmd.FailErrCode(err, r.platform.CodeFor(cmd.RestoreError), "restore")
+		return cmd.FailErrCode(err, r.platform.CodeFor(platform.RestoreError), "restore")
 	}
 	return nil
 }

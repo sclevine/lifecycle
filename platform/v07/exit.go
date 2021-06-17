@@ -1,7 +1,9 @@
 package v07
 
-import "github.com/buildpacks/lifecycle/cmd"
+import (
+	"github.com/buildpacks/lifecycle/platform"
+)
 
-func (p *Platform) CodeFor(errType cmd.LifecycleExitError) int {
+func (p *Platform) CodeFor(errType platform.LifecycleExitError) int {
 	return p.previousPlatform.CodeFor(errType)
 }

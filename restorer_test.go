@@ -20,6 +20,7 @@ import (
 	"github.com/buildpacks/lifecycle/cache"
 	"github.com/buildpacks/lifecycle/layers"
 	"github.com/buildpacks/lifecycle/platform"
+	"github.com/buildpacks/lifecycle/platform/factory"
 	h "github.com/buildpacks/lifecycle/testhelpers"
 )
 
@@ -65,7 +66,7 @@ func testRestorerBuilder(buildpackAPI, platformAPI string) func(t *testing.T, wh
 
 				logger := log.Logger{Handler: logHandler, Level: log.DebugLevel}
 
-				p, err := platform.NewPlatform(platformAPI)
+				p, err := factory.NewPlatform(platformAPI)
 				h.AssertNil(t, err)
 
 				restorer = &lifecycle.Restorer{

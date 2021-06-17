@@ -8,6 +8,8 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
+
+	platform "github.com/buildpacks/lifecycle/platform"
 )
 
 // MockPlatform is a mock of Platform interface.
@@ -47,6 +49,20 @@ func (mr *MockPlatformMockRecorder) API() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "API", reflect.TypeOf((*MockPlatform)(nil).API))
 }
 
+// NewAnalyzedMetadata mocks base method.
+func (m *MockPlatform) NewAnalyzedMetadata(arg0 platform.AnalyzedMetadataConfig) platform.AnalyzedMetadata {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewAnalyzedMetadata", arg0)
+	ret0, _ := ret[0].(platform.AnalyzedMetadata)
+	return ret0
+}
+
+// NewAnalyzedMetadata indicates an expected call of NewAnalyzedMetadata.
+func (mr *MockPlatformMockRecorder) NewAnalyzedMetadata(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewAnalyzedMetadata", reflect.TypeOf((*MockPlatform)(nil).NewAnalyzedMetadata), arg0)
+}
+
 // SupportsAssetPackages mocks base method.
 func (m *MockPlatform) SupportsAssetPackages() bool {
 	m.ctrl.T.Helper()
@@ -59,4 +75,18 @@ func (m *MockPlatform) SupportsAssetPackages() bool {
 func (mr *MockPlatformMockRecorder) SupportsAssetPackages() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportsAssetPackages", reflect.TypeOf((*MockPlatform)(nil).SupportsAssetPackages))
+}
+
+// SupportsMixinValidation mocks base method.
+func (m *MockPlatform) SupportsMixinValidation() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SupportsMixinValidation")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// SupportsMixinValidation indicates an expected call of SupportsMixinValidation.
+func (mr *MockPlatformMockRecorder) SupportsMixinValidation() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SupportsMixinValidation", reflect.TypeOf((*MockPlatform)(nil).SupportsMixinValidation))
 }
