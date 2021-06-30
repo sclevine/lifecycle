@@ -461,7 +461,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 											ctrPath(analyzerPath),
 											"-daemon",
 											"-cache-image", authRegCacheImage,
-											"some-image",
+											authRegistry.RepoName("some-image"),
 										),
 									)
 
@@ -486,7 +486,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 											ctrPath(analyzerPath),
 											"-cache-image",
 											authRegCacheImage,
-											"some-image",
+											authRegistry.RepoName("some-image"),
 										),
 									)
 
