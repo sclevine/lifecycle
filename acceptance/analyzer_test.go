@@ -884,7 +884,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 							"--name", containerName,
 							analyzeImage,
 							ctrPath(analyzerPath),
-							"-previous-image", "my-previous-image",
+							"-previous-image","my-previous-image",
 							"some-image",
 						) // #nosec G204
 						output, err := cmd.CombinedOutput()
