@@ -1069,7 +1069,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 				})
 
 				when("do not have read/write access to registry", func() {
-					it("throw read/write error", func() {
+					it("throws read/write error accessing destination tag", func() {
 						h.SkipIf(t, api.MustParse(platformAPI).Compare(api.MustParse("0.7")) < 0, "Platform API < 0.7 does not use tag flag")
 						cmd := exec.Command(
 							"docker", "run", "--rm",
