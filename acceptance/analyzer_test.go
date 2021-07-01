@@ -1104,7 +1104,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 						h.AssertNil(t, err)
 					})
 
-					it("pass through read/write validation and failed finding image name", func() {
+					it("passes read/write validation and does not error if there is no previous image", func() {
 						h.SkipIf(t, api.MustParse(platformAPI).Compare(api.MustParse("0.7")) < 0, "Platform API < 0.7 does not use tag flag")
 						cmd := exec.Command(
 							"docker", "run", "--rm",
