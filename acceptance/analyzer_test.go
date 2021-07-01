@@ -992,7 +992,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 						// Don't attempt to remove the image, as it's stored in the test registry, which is ephemeral.
 						// Attempting to remove the image sometimes produces `No such image` flakes.
 
-						it("throw read/write error", func() {
+						it("throws read/write error accessing cache image", func() {
 							h.SkipIf(t, api.MustParse(platformAPI).Compare(api.MustParse("0.7")) >= 0, "Platform API >= 0.7 does not read from the cache")
 							cmd := exec.Command(
 								"docker", "run", "--rm",
