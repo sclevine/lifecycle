@@ -293,17 +293,21 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 
 		it("drops privileges", func() {
 			h.SkipIf(t, runtime.GOOS == "windows", "Not relevant on Windows")
+			imageName := authRegistry.RepoName("some-image")
+			authConfig, err := auth.BuildEnvVar(authn.DefaultKeychain, imageName)
+			h.AssertNil(t, err)
 
 			output := h.DockerRun(t,
 				analyzeImage,
 				h.WithFlags(
 					"--network", registryNetwork,
 					"--env", "CNB_PLATFORM_API="+platformAPI,
+					"--env", "CNB_REGISTRY_AUTH="+authConfig,
 				),
 				h.WithBash(
 					fmt.Sprintf("%s -analyzed /some-dir/some-analyzed.toml %s; ls -al /some-dir",
 						ctrPath(analyzerPath),
-						noAuthRegistry.RepoName("some-image"),
+						imageName,
 					),
 				),
 			)
@@ -987,7 +991,7 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 					})
 				})
 
-				when("do have read access to registry", func() {
+				when("no read access", func() {
 					it("throws read error accessing previous image", func() {
 						cmd := exec.Command(
 							"docker", "run", "--rm",
