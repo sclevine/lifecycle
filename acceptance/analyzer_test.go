@@ -33,7 +33,7 @@ var (
 	analyzeImage         = "lifecycle/acceptance/analyzer"
 	analyzerPath         = "/cnb/lifecycle/analyzer"
 	cacheFixtureDir      = filepath.Join("testdata", "analyzer", "cache-dir")
-	daemonOS             string
+	daemonOS, daemonArch string
 	noAuthRegistry       *ih.DockerRegistry
 	authRegistry         *ih.DockerRegistry
 	registryNetwork      string
@@ -45,6 +45,10 @@ func TestAnalyzer(t *testing.T) {
 	info, err := h.DockerCli(t).Info(context.TODO())
 	h.AssertNil(t, err)
 	daemonOS = info.OSType
+	daemonArch = info.Architecture
+	if daemonArch == "x86_64" {
+		daemonArch = "amd64"
+	}
 
 	// Setup registry
 
@@ -75,7 +79,7 @@ func TestAnalyzer(t *testing.T) {
 
 	// Setup test container
 
-	h.MakeAndCopyLifecycle(t, daemonOS, analyzerBinaryDir)
+	h.MakeAndCopyLifecycle(t, daemonOS, daemonArch, analyzerBinaryDir)
 	h.DockerBuild(t,
 		analyzeImage,
 		analyzeDockerContext,
@@ -285,6 +289,26 @@ func testAnalyzerFunc(platformAPI string) func(t *testing.T, when spec.G, it spe
 
 				assertAnalyzedMetadata(t, filepath.Join(copyDir, "some-analyzed.toml"))
 			})
+		})
+
+		it("drops privileges", func() {
+			h.SkipIf(t, runtime.GOOS == "windows", "Not relevant on Windows")
+
+			output := h.DockerRun(t,
+				analyzeImage,
+				h.WithFlags(
+					"--network", registryNetwork,
+					"--env", "CNB_PLATFORM_API="+platformAPI,
+				),
+				h.WithBash(
+					fmt.Sprintf("%s -analyzed /some-dir/some-analyzed.toml %s; ls -al /some-dir",
+						ctrPath(analyzerPath),
+						noAuthRegistry.RepoName("some-image"),
+					),
+				),
+			)
+
+			h.AssertMatch(t, output, "2222 3333 .+ some-analyzed.toml")
 		})
 
 		// TODO: add with or after https://github.com/buildpacks/lifecycle/pull/646
