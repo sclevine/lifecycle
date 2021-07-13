@@ -1,19 +1,31 @@
 package pre06
 
-import "github.com/buildpacks/lifecycle/api"
+import (
+	"github.com/buildpacks/lifecycle/api"
+	"github.com/buildpacks/lifecycle/cmd"
+	"github.com/buildpacks/lifecycle/platform/common"
+)
 
-type Platform struct {
-	api *api.Version
+type platform struct {
+	api      *api.Version
+	analyzer cmd.Analyzer
 }
 
-func NewPlatform(apiString string) *Platform {
-	return &Platform{api: api.MustParse(apiString)}
+func NewPlatform(apiString string) common.Platform {
+	return &platform{
+		api:      api.MustParse(apiString),
+		analyzer: &analyzer{},
+	}
 }
 
-func (p *Platform) API() string {
+func (p *platform) API() string {
 	return p.api.String()
 }
 
-func (p *Platform) SupportsAssetPackages() bool {
+func (p *platform) Analyzer() cmd.Analyzer {
+	return p.analyzer
+}
+
+func (p *platform) SupportsAssetPackages() bool {
 	return false
 }
