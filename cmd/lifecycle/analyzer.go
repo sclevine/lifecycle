@@ -110,6 +110,14 @@ func (a *analyzeCmd) Args(nargs int, args []string) error {
 		return err
 	}
 
+	if a.platform.Analyzer().RequiresRunImage() && a.runImageRef == "" {
+		return cmd.FailErrCode(
+			errors.New("-run-image is required when there is no stack metadata available"),
+			cmd.CodeInvalidArgs,
+			"parse arguments",
+		)
+	}
+
 	return nil
 }
 
@@ -214,6 +222,9 @@ func (aa analyzeArgs) analyze() (platform.AnalyzedMetadata, error) {
 	if err != nil {
 		return platform.AnalyzedMetadata{}, cmd.FailErrCode(err, aa.platform.CodeFor(cmd.AnalyzeError), "analyzer")
 	}
+
+	analyzedMD.RunImage = &platform.ImageIdentifier{Reference: aa.runImageRef}
+
 	return analyzedMD, nil
 }
 

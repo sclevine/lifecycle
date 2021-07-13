@@ -28,7 +28,7 @@ var exitCodes = map[cmd.LifecycleExitError]int{
 	cmd.LaunchError: 82, // LaunchError indicates generic launch error
 }
 
-func (p *Platform) CodeFor(errType cmd.LifecycleExitError) int {
+func (p *platform) CodeFor(errType cmd.LifecycleExitError) int {
 	if code, ok := exitCodes[errType]; ok {
 		return code
 	}

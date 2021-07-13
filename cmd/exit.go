@@ -39,6 +39,11 @@ type Platform interface {
 	API() string
 	CodeFor(errType LifecycleExitError) int
 	SupportsAssetPackages() bool
+	Analyzer() Analyzer
+}
+
+type Analyzer interface {
+	RequiresRunImage() bool
 }
 
 type ErrorFail struct {
